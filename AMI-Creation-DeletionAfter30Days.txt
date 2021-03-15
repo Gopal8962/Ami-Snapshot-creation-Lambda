@@ -1,0 +1,105 @@
+Need 4 Services of AWS ( EC2, Lambda, IAM Role, Cloudwatch Rule ) 
+===================================================================
+Link :-[ https://identicalcloud.com/blog/lambda-function-for-auto-ami-creation/ ]
+Steps
+======
+1. Create Ec2
+2. Create Lambda Function with this code ( support Node.js.10x / 12 ) in Thiws code Changes require like Ec2-ID, Region, ServerName. Also Create new Iam role here 
+3. Attach Ec2FullAccess policy of created Iam Role.
+Now open Lambda and configre new event in for the testing perpose. after created event Test the code and if code succeed so it means your code working fine.
+4. Open CloudWatch and Setup Rules - Schedule cron Expression with ( cron expression like [(30 18 ? * * * )( Min, Hour, Day of month, month, Day of Week,  Year) It means creation every day at 00:00 AM ( converted by UST to IST) ] All Value emter in UST timezone not IST
+Add Target As Lambda Function Click on Create Rule.
+Now you can check AMI Creating and Volume Snapshot also created 
+
+Note:- You Can create AmazonEventBridge here setup cron expression and add as a trigger over lambda you dont want to setup cloudwatch Rule 
+                                                                                                    =======================================
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AmazonEventBridge Pricing
+============================
+AWS service events	         Free
+Custom events	          :-     $1.00/million custom events published
+Third-party (SaaS) events :-   	$1.00/million events published
+Cross-account events   :-       $1.00/million cross-account events sent
+
+ 
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+var AWS = require('aws-sdk');
+var DateToday = new Date();
+var date = DateToday.toISOString();
+var timestamp = date.substr(0, 10);
+console.log('Today: ' , timestamp);
+
+var DatePrevious = new Date();
+DatePrevious.setDate(DatePrevious.getDate() - 30)
+var dateprev = DatePrevious.toISOString();
+var timestamp_prev = dateprev.substr(0, 10);
+console.log('<br>30 days ago was: ' , timestamp_prev);
+
+
+var INSTANCE_SETTINGS = [
+	{
+		id: 'i-xxxxxxxxxxxxxxx',
+		name: '$servername',
+		region: '$regioname'
+	}
+	
+];
+
+exports.handler = function (event, context) {	
+	for (var index = 0; index < INSTANCE_SETTINGS.length; index++) {
+		let currentIndex = index;
+		var ec2 = new AWS.EC2({
+			apiVersion: '2016-11-15',
+			region: INSTANCE_SETTINGS[index].region,
+		});
+
+       var ImageNameString = "auto-ami-" + (INSTANCE_SETTINGS[index].name) + "-" + timestamp;
+		var params = {
+			Description: "Created from Lambda",
+			InstanceId: INSTANCE_SETTINGS[index].id,
+			Name: ImageNameString,
+			NoReboot: true,
+		};
+		ec2.createImage(params, function (err, data0) {
+			if (err) console.log(err, err.stack);
+			else console.log(data0);
+		});
+
+        var ImageNameToDelete = "auto-ami-" + (INSTANCE_SETTINGS[index].name) + "-" + timestamp_prev;
+        console.log("Image name to delete : ",ImageNameToDelete)
+        let params_todelete = {}
+        params_todelete.Filters = [...PARAMS_TO_DELETE.Filters]
+        params_todelete.Owners = ['self'];
+        params_todelete.Filters[0].Values = [ImageNameToDelete];
+
+
+		ec2.describeImages(params_todelete, function (err, data) {
+			if (err) console.log(err, err.stack);
+			else {
+                if(data.Images.length > 0) {
+                    var newec2 = new AWS.EC2({
+						apiVersion: '2016-11-15',
+						region: INSTANCE_SETTINGS[currentIndex].region,
+					});
+    
+                    newec2.deregisterImage({ ImageId : data.Images[0].ImageId }, function(err, data) {
+                        if (err) console.log(err, err.stack); // an error occurred
+                        else     console.log("SUCCESS");           // successful response
+                    });
+                }
+            }
+        });
+	}
+};
+
+const PARAMS_TO_DELETE = {
+    Filters: [
+        {
+            Name: 'name',
+            Values: [],
+        }
+    ],
+    Owners: ['self']
+};
